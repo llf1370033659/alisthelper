@@ -19,6 +19,7 @@ permissions:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   build-windows:
+    if: github.repository == 'Xmarmalade/alisthelper'
     # The type of runner that the job will run on
     runs-on: windows-latest
 
@@ -69,6 +70,7 @@ jobs:
             build/windows/x64/runner/Release/${{env.WINDOWS_PORTABLE_NAME}}.zip
 
   build-macos:
+    if: github.repository == 'Xmarmalade/alisthelper'
     # The type of runner that the job will run on
     runs-on: macos-latest
 
@@ -110,6 +112,7 @@ jobs:
             build/macos/Build/Products/Release/${{ env.MACOS_APP_NAME }}.tar.gz
 
   release:
+    if: github.repository == 'Xmarmalade/alisthelper'
     needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:

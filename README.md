@@ -1,3 +1,17 @@
+# Alist Helper — OpenList fork
+
+OpenList 原文件名适配及 Windows 更新修复版，基于 [Xmarmalade/alisthelper](https://github.com/Xmarmalade/alisthelper)。
+
+- 直接识别 `openlist.exe`，同时兼容 `alist.exe`。
+- 在设置 → 检查更新中更新 OpenList 和 rclone，自动选择匹配的标准 ZIP。
+- rclone 更新后恢复原先运行的挂载命令。
+- [下载安装包和便携版](https://github.com/llf1370033659/alisthelper/releases/latest)
+- [适配及构建说明](OPENLIST-ADAPTATION.md)
+
+保留原项目 GPL-3.0 许可与作者信息。以下为上游说明。
+
+---
+
 # alisthelper
 
 <p align="center">

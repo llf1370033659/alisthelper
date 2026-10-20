@@ -5,17 +5,20 @@ import 'package:alisthelper/provider/rclone_provider.dart';
 import 'package:alisthelper/provider/settings_provider.dart';
 import 'package:alisthelper/utils/native/file_helper.dart';
 import 'package:alisthelper/utils/textutils.dart';
+import 'package:alisthelper/utils/release_assets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 
-final updaterProvider =
-    NotifierProvider<UpdaterNotifier, UpdaterState>(UpdaterNotifier.new);
+final updaterProvider = NotifierProvider<UpdaterNotifier, UpdaterState>(
+  UpdaterNotifier.new,
+);
 
 class UpdaterNotifier extends Notifier<UpdaterState> {
   Dio dio = Dio();
   Logger logger = Logger();
+  String _architecture = hostGoArchitecture();
 
   @override
   UpdaterState build() {
@@ -26,24 +29,19 @@ class UpdaterNotifier extends Notifier<UpdaterState> {
 
   Future<void> getRcloneInfo() async {
     try {
-      Process process;
-      if (Platform.isWindows) {
-        process = await Process.start(
-            '${state.rcloneDirectory}\\rclone.exe', ['version'],
-            workingDirectory: state.rcloneDirectory);
-      } else {
-        process = await Process.start(
-            '${state.rcloneDirectory}/rclone', ['version'],
-            workingDirectory: state.rcloneDirectory);
+      final name = Platform.isWindows ? 'rclone.exe' : 'rclone';
+      final result = await Process.run('${state.rcloneDirectory}/$name', [
+        'version',
+      ], workingDirectory: state.rcloneDirectory);
+      if (result.exitCode != 0) {
+        throw ProcessException(
+          name,
+          ['version'],
+          result.stderr.toString(),
+          result.exitCode,
+        );
       }
-      process.stdout.listen((data) {
-        String text = TextUtils.stdDecode(data, false);
-        _parseVersion(text);
-      });
-      process.stderr.listen((data) {
-        String text = TextUtils.stdDecode(data, false);
-        logger.e('stderr: $text');
-      });
+      _parseVersion(TextUtils.removeEscapeSequences(result.stdout.toString()));
     } on ProcessException catch (e) {
       logger.e('ProcessException: $e');
     }
@@ -54,7 +52,9 @@ class UpdaterNotifier extends Notifier<UpdaterState> {
     final match = versionRegExp.firstMatch(output);
     if (match != null) {
       final version = 'v${match.group(1)}';
-      logger.e('Current version: $version');
+      _architecture =
+          RegExp(r'os/arch:\s*(\S+)').firstMatch(output)?.group(1) ??
+          hostGoArchitecture();
       state = state.copyWith(rcloneCurrentVersion: version);
     }
   }
@@ -64,8 +64,9 @@ class UpdaterNotifier extends Notifier<UpdaterState> {
   }
 
   Future<void> fetchLatestVersion() async {
-    final response = await http.get(Uri.parse(
-        'https://api.github.com/repos/rclone/rclone/releases/latest'));
+    final response = await http.get(
+      Uri.parse('https://api.github.com/repos/rclone/rclone/releases/latest'),
+    );
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     try {
       String latest = json['tag_name'];
@@ -73,24 +74,25 @@ class UpdaterNotifier extends Notifier<UpdaterState> {
       String platformKey = Platform.isWindows
           ? 'windows'
           : (Platform.isMacOS ? 'darwin' : 'linux');
-      List<Map> assetsForSpecificPlatform = [];
-      for (Map asset in assets) {
-        if (asset['name'].contains(platformKey)) {
-          //remove the asset if it's not for the current platform
-          assetsForSpecificPlatform.add(asset);
-        }
-      }
       // Preventing uninitialized version string
       if (state.rcloneCurrentVersion == "v1.0.0") {
-        getRcloneCurrentVersion();
+        await getRcloneCurrentVersion();
       }
+      final assetsForSpecificPlatform = compatibleReleaseAssets(
+        assets,
+        program: 'rclone',
+        platform: platformKey,
+        architecture: _architecture,
+      );
       state = state.copyWith(
-          rcloneLatestVersion: latest,
-          rcloneAssets: assetsForSpecificPlatform,
-          upgradeStatus: UpgradeStatus.idle);
+        rcloneLatestVersion: latest,
+        rcloneAssets: assetsForSpecificPlatform,
+        upgradeStatus: UpgradeStatus.idle,
+      );
     } catch (e) {
       throw Exception(
-          '$e\nFailed to get latest version when fetching: ${json.toString()}');
+        '$e\nFailed to get latest version when fetching: ${json.toString()}',
+      );
     }
   }
 
@@ -100,7 +102,7 @@ class UpdaterNotifier extends Notifier<UpdaterState> {
     await Dio().download(downloadLink, targetArchiveFile);
     FileHelper.extractRclone(targetArchiveFile, state.rcloneDirectory);
     await File(targetArchiveFile).delete();
-    getRcloneCurrentVersion();
+    await getRcloneCurrentVersion();
     state = state.copyWith(upgradeStatus: UpgradeStatus.complete);
     //startAlist();
   }
@@ -109,25 +111,30 @@ class UpdaterNotifier extends Notifier<UpdaterState> {
     state = state.copyWith(upgradeStatus: UpgradeStatus.installing);
     String targetArchiveFile = '${state.rcloneDirectory}/rclonenew.zip';
     String backupFolder = '${state.rcloneDirectory}/.old';
-    String currentAlist = Platform.isWindows
+    String currentRclone = Platform.isWindows
         ? '${state.rcloneDirectory}/rclone.exe'
         : '${state.rcloneDirectory}/rclone';
     await Dio().download(downloadLink, targetArchiveFile);
-    ref.read(rcloneProvider.notifier).endRclone();
+    final wasRunning = ref.read(rcloneProvider).isRunning;
+    await ref.read(rcloneProvider.notifier).endRclone();
     if (!await Directory(backupFolder).exists()) {
       await Directory(backupFolder).create();
     }
-    if (await File('$backupFolder/rclone-${state.rcloneCurrentVersion}.exe')
-        .exists()) {
-      await File('$backupFolder/rclone-${state.rcloneCurrentVersion}.exe')
-          .delete();
+    final suffix = Platform.isWindows ? '.exe' : '';
+    final backup = File(
+      '$backupFolder/rclone-${state.rcloneCurrentVersion}$suffix',
+    );
+    if (await backup.exists()) {
+      await backup.delete();
     }
-    await File(currentAlist)
-        .rename('$backupFolder/rclone-${state.rcloneCurrentVersion}.exe');
+    await File(currentRclone).rename(backup.path);
     FileHelper.extractRclone(
-        '${state.rcloneDirectory}/rclonenew.zip', state.rcloneDirectory);
+      '${state.rcloneDirectory}/rclonenew.zip',
+      state.rcloneDirectory,
+    );
     await File(targetArchiveFile).delete();
-    getRcloneCurrentVersion();
+    await getRcloneCurrentVersion();
     state = state.copyWith(upgradeStatus: UpgradeStatus.complete);
+    if (wasRunning) await ref.read(rcloneProvider.notifier).startRclone();
   }
 }

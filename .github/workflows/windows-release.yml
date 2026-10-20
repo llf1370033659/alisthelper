@@ -1,0 +1,65 @@
+name: Windows release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.repository == 'llf1370033659/alisthelper'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.4'
+          channel: stable
+          cache: true
+      - name: Generate and test
+        run: |
+          flutter pub get
+          dart run slang
+          dart run build_runner build --delete-conflicting-outputs
+          flutter test --reporter expanded
+      - name: Build Windows application
+        run: flutter build windows --release
+      - name: Package portable application and installer
+        shell: pwsh
+        run: |
+          $runner = 'build/windows/x64/runner'
+          Copy-Item LICENSE "$runner/Release/LICENSE"
+          Copy-Item OPENLIST-ADAPTATION.md "$runner/Release/README.md"
+          Copy-Item windows/scripts/innosetup.iss "$runner/innosetup.iss"
+          Copy-Item assets/alisthelper.ico "$runner/alisthelper.ico"
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Compress-Archive -Path "$runner/Release/*" -DestinationPath "dist/AlistHelper-${{ github.ref_name }}-windows-x64-portable.zip"
+          Push-Location $runner
+          & 'C:/Program Files (x86)/Inno Setup 6/ISCC.exe' "/DAppVersion=${{ github.ref_name }}" "/FAlistHelper-${{ github.ref_name }}-windows-x64-setup" innosetup.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+          Pop-Location
+          Copy-Item "$runner/Output/*.exe" dist/
+          git archive --format=zip --prefix=alisthelper/ "--output=dist/AlistHelper-${{ github.ref_name }}-source.zip" HEAD
+          Get-ChildItem dist -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: dist/*
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 'Alist Helper ${{ github.ref_name }} — OpenList'
+          body: |
+            OpenList 原文件名适配及 Windows 更新修复版。
+
+            - 直接使用 openlist.exe，兼容现有 alist.exe。
+            - 在 Helper 内检查和更新 OpenList、rclone，按平台和架构选择安装包。
+            - 修复 Windows 升级文件占用、进程停止等待及 rclone 更新后恢复挂载。
+            - 保留现有配置、OpenList 数据和 rclone 远程配置。
+
+            setup.exe 为安装包；portable.zip 为便携版；source.zip 为对应源码。
+          files: dist/*

@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:alisthelper/provider/settings_provider.dart';
 import 'package:alisthelper/utils/textutils.dart';
 import 'package:alisthelper/utils/server_executable.dart';
+import 'package:alisthelper/utils/release_assets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logger/logger.dart';
 
@@ -181,17 +182,18 @@ class AlistNotifier extends Notifier<AlistState> {
       String platformKey = Platform.isWindows
           ? 'windows'
           : (Platform.isMacOS ? 'darwin' : 'linux');
-      List<Map> assetsForSpecificPlatform = [];
-      for (Map asset in assets) {
-        if (asset['name'].contains(platformKey)) {
-          //remove the asset if it's not for the current platform
-          assetsForSpecificPlatform.add(asset);
-        }
-      }
       // Preventing uninitialized version string
       if (state.currentVersion == "v1.0.0") {
         await getAlistCurrentVersion(addToOutput: false);
       }
+      final assetsForSpecificPlatform = compatibleReleaseAssets(
+        assets,
+        program: 'openlist',
+        platform: platformKey,
+        architecture: state.alistArchitecture.isEmpty
+            ? hostGoArchitecture()
+            : state.alistArchitecture,
+      );
       state = state.copyWith(
         latestVersion: latest,
         newReleaseAssets: assetsForSpecificPlatform,

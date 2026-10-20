@@ -107,7 +107,7 @@
             }
         },
         "alistSettings": {
-            "title": "Alist Options",
+            "title": "OpenList / AList Options",
             "autoStartAlist": {
                 "title": "Allow alist auto start",
                 "description": "This will auto start alist when Alist Helper starts."
@@ -175,7 +175,7 @@
         "selectPackage": "Select the update package you want to download.",
         "networkError": "Loading... If it hasn't loaded for a long time, please check your network and try again.",
         "alistVersion": {
-            "title": "Alist Version",
+            "title": "OpenList Version",
             "currentVersion": "Current Alist Version",
             "latestVersion": "Latest Alist Version"
         },

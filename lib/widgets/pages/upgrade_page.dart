@@ -126,7 +126,7 @@ class _UpgradePageState extends ConsumerState<UpgradePage> {
                       trailing: FilledButton.tonal(
                         onPressed: () async {
                           await launchUrl(Uri.parse(
-                              'https://github.com/Xmarmalade/alisthelper/releases'));
+                              'https://github.com/llf1370033659/alisthelper/releases'));
                         },
                         child: const Icon(Icons.link),
                       ),
@@ -183,7 +183,7 @@ class _UpgradePageState extends ConsumerState<UpgradePage> {
                                     alistHelperState.latestVersion)
                                 ? (() async {
                                     await launchUrl(Uri.parse(
-                                        'https://github.com/Xmarmalade/alisthelper/releases/latest'));
+                                        'https://github.com/llf1370033659/alisthelper/releases/latest'));
                                   })
                                 : null)),
                         child: const Icon(Icons.open_in_browser_outlined),

@@ -107,7 +107,7 @@
             }
         },
         "alistSettings": {
-            "title": "Alist 選項",
+            "title": "OpenList / AList 選項",
             "autoStartAlist": {
                 "title": "允許 alist 自動啟動",
                 "description": "這將在 Alist Helper 啟動時自動啟動 alist。"
@@ -175,7 +175,7 @@
         "selectPackage": "選擇要下載的更新軟體包。",
         "networkError": "正在載入中...若長時間未載入請檢查網路並重試。",
         "alistVersion": {
-            "title": "Alist 版本",
+            "title": "OpenList 版本",
             "currentVersion": "目前 Alist 版本",
             "latestVersion": "最新 Alist 版本"
         },

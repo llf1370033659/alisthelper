@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   build-windows:
+    if: github.repository == 'Xmarmalade/alisthelper'
     runs-on: windows-latest
     outputs:
       date: ${{ steps.date.outputs.date }}
@@ -48,6 +49,7 @@ jobs:
             Release-windows-x64-${{ steps.date.outputs.date }}-${{ github.sha }}.zip
 
   build-macos:
+    if: github.repository == 'Xmarmalade/alisthelper'
     runs-on: macos-latest
     outputs:
       date: ${{ steps.date.outputs.date }}
@@ -84,6 +86,7 @@ jobs:
             build/macos/Build/Products/Release/AlistHelper-Beta-macos-${{ steps.date.outputs.date }}.dmg
 
   release:
+    if: github.repository == 'Xmarmalade/alisthelper'
     needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
