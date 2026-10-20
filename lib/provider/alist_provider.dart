@@ -9,15 +9,18 @@ import 'package:http/http.dart' as http;
 
 import 'package:alisthelper/provider/settings_provider.dart';
 import 'package:alisthelper/utils/textutils.dart';
+import 'package:alisthelper/utils/server_executable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logger/logger.dart';
 
-final alistProvider =
-    NotifierProvider<AlistNotifier, AlistState>(AlistNotifier.new);
+final alistProvider = NotifierProvider<AlistNotifier, AlistState>(
+  AlistNotifier.new,
+);
 
 class AlistNotifier extends Notifier<AlistState> {
   List<String> stdOut = [];
   Logger logger = Logger();
+  Process? _serverProcess;
 
   @override
   AlistState build() {
@@ -29,13 +32,13 @@ class AlistNotifier extends Notifier<AlistState> {
   }
 
   Future<void> setWorkDir(String workDir) async {
-    endAlist();
+    await endAlist();
     ref.read(settingsProvider.notifier).setWorkingDirectory(workDir);
     state = state.copyWith(workDir: workDir);
   }
 
   Future<void> setAlistArgs(List<String> args) async {
-    endAlist();
+    await endAlist();
     ref.read(settingsProvider.notifier).setAlistArgs(args);
     state = state.copyWith(alistArgs: args);
   }
@@ -72,31 +75,30 @@ class AlistNotifier extends Notifier<AlistState> {
   }
 
   Future<void> startAlist() async {
-    //state = state.copyWith(isRunning: true);
+    if (_serverProcess != null) return;
+    final executable = ServerExecutable.require(state.workDir);
     final Map<String, String> envVars = Map.from(Platform.environment);
     if (state.proxy != '') {
       envVars['http_proxy'] = state.proxy;
       envVars['https_proxy'] = state.proxy;
       addOutput('Proxy: ${state.proxy}');
     }
+    final process = await Process.start(
+      executable.path,
+      state.alistArgs,
+      workingDirectory: state.workDir,
+      environment: envVars,
+    );
+    _serverProcess = process;
     await changeTray(true);
-    Process process;
 
-    if (Platform.isWindows) {
-      process = await Process.start(
-        '${state.workDir}\\alist.exe',
-        state.alistArgs,
-        workingDirectory: state.workDir,
-        environment: envVars,
-      );
-    } else {
-      process = await Process.start(
-        '${state.workDir}/alist',
-        state.alistArgs,
-        workingDirectory: state.workDir,
-        environment: envVars,
-      );
-    }
+    process.exitCode.then((_) async {
+      if (identical(_serverProcess, process)) {
+        _serverProcess = null;
+        state = state.copyWith(isRunning: false);
+        await changeTray(false);
+      }
+    });
 
     process.stdout.listen((data) {
       String text = TextUtils.stdDecode(data, false);
@@ -109,40 +111,24 @@ class AlistNotifier extends Notifier<AlistState> {
   }
 
   Future<void> endAlist() async {
+    // Stop the process this helper started, regardless of its executable name.
+    final process = _serverProcess;
+    _serverProcess = null;
+    if (process != null) {
+      process.kill();
+      await process.exitCode;
+    }
     state = state.copyWith(isRunning: false);
-    Process process;
-    if (Platform.isWindows) {
-      process = await Process.start('taskkill', ['/f', '/im', 'alist.exe']);
-    } else {
-      process = await Process.start('pkill', ['alist']);
-    }
     await changeTray(false);
-    process.stdout.listen((data) {
-      String text = TextUtils.stdDecode(data, true);
-      addOutput(text);
-    });
-  }
-
-  static Future<void> endAlistProcess() async {
-    if (Platform.isWindows) {
-      await Process.start('taskkill', ['/f', '/im', 'alist.exe']);
-    } else {
-      await Process.start('pkill', ['alist']);
-    }
   }
 
   //get alist admin
   Future<void> genRandomPwd() async {
-    Process alistAdmin;
-    if (Platform.isWindows) {
-      alistAdmin = await Process.start(
-          '${state.workDir}\\alist.exe', ['admin', 'random'],
-          workingDirectory: state.workDir);
-    } else {
-      alistAdmin = await Process.start(
-          '${state.workDir}/alist', ['admin', 'random'],
-          workingDirectory: state.workDir);
-    }
+    final executable = ServerExecutable.require(state.workDir);
+    final alistAdmin = await Process.start(executable.path, [
+      'admin',
+      'random',
+    ], workingDirectory: state.workDir);
     alistAdmin.stderr.listen((data) {
       String text = TextUtils.stdDecode(data, false);
       if (text.contains('password:')) {
@@ -155,48 +141,39 @@ class AlistNotifier extends Notifier<AlistState> {
 
   //get alist version and architecture
   Future<void> getAlistCurrentVersion({required bool addToOutput}) async {
-    Process alistVersion;
     try {
-      if (Platform.isWindows) {
-        alistVersion = await Process.start(
-            '${state.workDir}\\alist.exe', ['version'],
-            workingDirectory: state.workDir);
-      } else {
-        alistVersion = await Process.start(
-            '${state.workDir}/alist', ['version'],
-            workingDirectory: state.workDir);
+      final executable = ServerExecutable.require(state.workDir);
+      final result = await Process.run(executable.path, [
+        'version',
+      ], workingDirectory: state.workDir);
+      if (result.exitCode != 0) {
+        throw ProcessException(
+          executable.path,
+          ['version'],
+          result.stderr.toString(),
+          result.exitCode,
+        );
       }
-      alistVersion.stdout.listen((data) {
-        String text = TextUtils.stdDecode(data, false);
-        if (text.contains('Version')) {
-          String versionInfo = text
-              .split('Go Version:')[1]
-              .split('Version:')[1]
-              .trim()
-              .split('\n')[0]
-              .trim();
-          String arch = text
-              .split('Go Version:')[1]
-              .trim()
-              .split('\n')[0]
-              .trim()
-              .split('/')
-              .last;
-          //print('Current Alist Version: $versionInfo, Architecture: $arch');
-          state = state.copyWith(currentVersion: versionInfo, alistArchitecture: arch);
-        }
-        if (addToOutput) {
-          addOutput(text);
-        }
-      });
+      final text = TextUtils.removeEscapeSequences(
+        '${result.stdout}\n${result.stderr}',
+      );
+      final info = ServerExecutable.parseVersion(text);
+      state = state.copyWith(
+        currentVersion: info.version,
+        alistArchitecture: info.architecture,
+      );
+      if (addToOutput) addOutput(text);
     } on ProcessException catch (e) {
       logger.e('Error: ${e.message}');
     }
   }
 
   Future<void> fetchLatestVersion() async {
-    final response = await http.get(Uri.parse(
-        'https://api.github.com/repos/OpenListTeam/OpenList/releases/latest'));
+    final response = await http.get(
+      Uri.parse(
+        'https://api.github.com/repos/OpenListTeam/OpenList/releases/latest',
+      ),
+    );
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     try {
       String latest = json['tag_name'];
@@ -213,15 +190,17 @@ class AlistNotifier extends Notifier<AlistState> {
       }
       // Preventing uninitialized version string
       if (state.currentVersion == "v1.0.0") {
-        getAlistCurrentVersion(addToOutput: false);
+        await getAlistCurrentVersion(addToOutput: false);
       }
       state = state.copyWith(
-          latestVersion: latest,
-          newReleaseAssets: assetsForSpecificPlatform,
-          upgradeStatus: UpgradeStatus.idle);
+        latestVersion: latest,
+        newReleaseAssets: assetsForSpecificPlatform,
+        upgradeStatus: UpgradeStatus.idle,
+      );
     } catch (e) {
       throw Exception(
-          '$e\nFailed to get latest version when fetching: ${json.toString()}');
+        '$e\nFailed to get latest version when fetching: ${json.toString()}',
+      );
     }
   }
 
@@ -231,7 +210,7 @@ class AlistNotifier extends Notifier<AlistState> {
     await Dio().download(downloadLink, targetArchiveFile);
     FileHelper.unzipFile(targetArchiveFile, state.workDir);
     await File(targetArchiveFile).delete();
-    getAlistCurrentVersion(addToOutput: false);
+    await getAlistCurrentVersion(addToOutput: false);
     state = state.copyWith(upgradeStatus: UpgradeStatus.complete);
     //startAlist();
   }
@@ -240,38 +219,25 @@ class AlistNotifier extends Notifier<AlistState> {
     state = state.copyWith(upgradeStatus: UpgradeStatus.installing);
     String targetArchiveFile = '${state.workDir}/alistnew.zip';
     String backupFolder = '${state.workDir}/.old';
-    String currentAlist = Platform.isWindows
-        ? '${state.workDir}/alist.exe'
-        : '${state.workDir}/alist';
-    String backupFile = Platform.isWindows
-        ? '$backupFolder/alist-${state.currentVersion}.exe'
-        : '$backupFolder/alist-${state.currentVersion}';
+    final currentAlist = ServerExecutable.require(state.workDir);
+    final backupFile = ServerExecutable.backupFile(
+      currentAlist,
+      state.currentVersion,
+    );
 
     await Dio().download(downloadLink, targetArchiveFile);
-    endAlist();
+    await endAlist();
     if (!await Directory(backupFolder).exists()) {
       await Directory(backupFolder).create();
     }
-    if (await File(backupFile).exists()) {
-      await File(backupFile).delete();
+    if (await backupFile.exists()) {
+      await backupFile.delete();
     }
-    await File(currentAlist).rename(backupFile);
+    await currentAlist.rename(backupFile.path);
     FileHelper.unzipFile('${state.workDir}/alistnew.zip', state.workDir);
-    // if openlist rename it to alist
-    if (Platform.isWindows) {
-      if (await File('${state.workDir}/openlist.exe').exists()) {
-        await File('${state.workDir}/openlist.exe')
-            .rename('${state.workDir}/alist.exe');
-      }
-    } else {
-      if (await File('${state.workDir}/openlist').exists()) {
-        await File('${state.workDir}/openlist')
-            .rename('${state.workDir}/alist');
-      }
-    }
     await File(targetArchiveFile).delete();
-    getAlistCurrentVersion(addToOutput: false);
+    await getAlistCurrentVersion(addToOutput: false);
     state = state.copyWith(upgradeStatus: UpgradeStatus.complete);
-    startAlist();
+    await startAlist();
   }
 }

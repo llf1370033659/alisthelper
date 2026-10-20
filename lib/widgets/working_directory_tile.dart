@@ -4,6 +4,7 @@ import 'package:alisthelper/i18n/strings.g.dart';
 import 'package:alisthelper/model/settings_state.dart';
 import 'package:alisthelper/provider/alist_provider.dart';
 import 'package:alisthelper/provider/settings_provider.dart';
+import 'package:alisthelper/utils/server_executable.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -69,23 +70,23 @@ class WorkingDirectoryTile extends ConsumerWidget {
                   ),
                   FilledButton.tonal(
                     onPressed: () async {
-                      final directory =
-                          Directory(workingDirectoryController.text);
-                      final String programName =
-                          Platform.isWindows ? "alist.exe" : "alist";
                       try {
-                        final List<FileSystemEntity> files =
-                            await directory.list().toList();
-                        if (files.any(
-                            (element) => element.path.endsWith(programName))) {
+                        final executable = ServerExecutable.find(
+                          workingDirectoryController.text,
+                        );
+                        if (executable != null) {
                           if (context.mounted) {
-                            Navigator.of(context)
-                                .pop(workingDirectoryController.text);
+                            Navigator.of(
+                              context,
+                            ).pop(workingDirectoryController.text);
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(t
-                                    .settings.alistSettings.workingDirectory
-                                    .found(exec: programName)),
+                                content: Text(
+                                  t.settings.alistSettings.workingDirectory
+                                      .found(
+                                        exec: executable.uri.pathSegments.last,
+                                      ),
+                                ),
                               ),
                             );
                           }
@@ -95,20 +96,23 @@ class WorkingDirectoryTile extends ConsumerWidget {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(t
-                                    .settings.alistSettings.workingDirectory
-                                    .notFound(exec: programName)),
+                                content: Text(
+                                  t.settings.alistSettings.workingDirectory
+                                      .notFound(
+                                        exec: ServerExecutable.names().join(
+                                          ' / ',
+                                        ),
+                                      ),
+                                ),
                               ),
                             );
                           }
                         }
                       } on Exception catch (e) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(e.toString()),
-                            ),
-                          );
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text(e.toString())));
                         }
                       }
                     },
@@ -144,8 +148,9 @@ class RcloneDirectoryTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, ref) {
     final SettingsState settings = ref.watch(settingsProvider);
-    final SettingsNotifier settingsNotifier =
-        ref.read(settingsProvider.notifier);
+    final SettingsNotifier settingsNotifier = ref.read(
+      settingsProvider.notifier,
+    );
     final TextEditingController rcloneDirectoryController =
         TextEditingController(text: settings.rcloneDirectory);
 
@@ -171,7 +176,10 @@ class RcloneDirectoryTile extends ConsumerWidget {
                       controller: rcloneDirectoryController,
                       decoration: InputDecoration(
                         border: OutlineInputBorder(),
-                        labelText: t.settings.alistSettings.workingDirectory
+                        labelText: t
+                            .settings
+                            .alistSettings
+                            .workingDirectory
                             .description,
                         hintText: 'home/user/rclone',
                         helperText:
@@ -186,7 +194,10 @@ class RcloneDirectoryTile extends ConsumerWidget {
                                   selectedDirectory;
                             }
                           },
-                          tooltip: t.settings.alistSettings.workingDirectory
+                          tooltip: t
+                              .settings
+                              .alistSettings
+                              .workingDirectory
                               .chooseFrom,
                         ),
                       ),
@@ -200,23 +211,29 @@ class RcloneDirectoryTile extends ConsumerWidget {
                   ),
                   FilledButton.tonal(
                     onPressed: () async {
-                      final directory =
-                          Directory(rcloneDirectoryController.text);
-                      final String programName =
-                          Platform.isWindows ? "rclone.exe" : "rclone";
+                      final directory = Directory(
+                        rcloneDirectoryController.text,
+                      );
+                      final String programName = Platform.isWindows
+                          ? "rclone.exe"
+                          : "rclone";
                       try {
-                        final List<FileSystemEntity> files =
-                            await directory.list().toList();
+                        final List<FileSystemEntity> files = await directory
+                            .list()
+                            .toList();
                         if (files.any(
-                            (element) => element.path.endsWith(programName))) {
+                          (element) => element.path.endsWith(programName),
+                        )) {
                           if (context.mounted) {
-                            Navigator.of(context)
-                                .pop(rcloneDirectoryController.text);
+                            Navigator.of(
+                              context,
+                            ).pop(rcloneDirectoryController.text);
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(t
-                                    .settings.alistSettings.workingDirectory
-                                    .found(exec: programName)),
+                                content: Text(
+                                  t.settings.alistSettings.workingDirectory
+                                      .found(exec: programName),
+                                ),
                               ),
                             );
                           }
@@ -226,20 +243,19 @@ class RcloneDirectoryTile extends ConsumerWidget {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(t
-                                    .settings.alistSettings.workingDirectory
-                                    .notFound(exec: programName)),
+                                content: Text(
+                                  t.settings.alistSettings.workingDirectory
+                                      .notFound(exec: programName),
+                                ),
                               ),
                             );
                           }
                         }
                       } on Exception catch (e) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(e.toString()),
-                            ),
-                          );
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text(e.toString())));
                         }
                       }
                     },

@@ -51,14 +51,15 @@ class _TrayWatcherState extends ConsumerState<TrayWatcher> with TrayListener {
 
   @override
   void onTrayMenuItemClick(MenuItem menuItem) async {
-    final entry =
-        TrayEntry.values.firstWhereOrNull((e) => e.name == menuItem.key);
+    final entry = TrayEntry.values.firstWhereOrNull(
+      (e) => e.name == menuItem.key,
+    );
     switch (entry) {
       case TrayEntry.open:
         await showFromTray();
         break;
       case TrayEntry.quit:
-        await AlistNotifier.endAlistProcess();
+        await ref.read(alistProvider.notifier).endAlist();
         await RcloneNotifier.endRcloneProcess();
         exit(0);
       case TrayEntry.startAlist:
